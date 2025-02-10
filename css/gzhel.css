@@ -1,0 +1,14 @@
+/* gzhel.css */
+
+/* Title font */
+@font-face {
+    font-family: 'Blagovest';
+    src: url('/fonts/Blagovest.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+  
+  /* Applying font for the titles */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Blagovest', serif;
+  }
