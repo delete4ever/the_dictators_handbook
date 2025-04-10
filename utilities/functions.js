@@ -1,23 +1,53 @@
-// utilities/functions.js
+// ==============================
+// 📁 utilities/functions.js
+// ==============================
 
-/**
- * Switches the design theme by updating the stylesheet link.
- * @param {string} stylePath - Path to the CSS file.
- */
+// ==============================
+// Force scroll on initial load (mobile fix)
+// ==============================
+(function fixScrollBug() {
+  const restoreScrollEarly = () => {
+    document.body.style.overflow = 'auto';
+    document.documentElement.style.overflow = 'auto';
+    document.body.classList.remove('modal-open', 'offcanvas-open', 'overflow-hidden');
+  };
+
+  restoreScrollEarly();
+  window.addEventListener('load', restoreScrollEarly);
+  window.addEventListener('resize', restoreScrollEarly);
+  window.addEventListener('orientationchange', restoreScrollEarly);
+})();
+
+// ==============================
+// Set real viewport height
+// ==============================
+function setRealVh() {
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+window.addEventListener('resize', setRealVh);
+window.addEventListener('orientationchange', setRealVh);
+setRealVh();
+
+// ==============================
+// Theme switching logic
+// ==============================
 function switchStyle(stylePath) {
   const themeStylesheet = document.getElementById('themeStylesheet');
   if (themeStylesheet) {
     themeStylesheet.href = stylePath;
-    // Saving design theme in the local storage
     localStorage.setItem('selectedTheme', stylePath);
     console.log(`Switched style to: ${stylePath}`);
   } else {
-    console.error('Theme stylesheet element with id "themeStylesheet" not found.');
+    console.error('Theme stylesheet not found.');
   }
 }
 
-// Applying the chosen theme to other pages
+// ==============================
+// Document Ready
+// ==============================
 document.addEventListener('DOMContentLoaded', () => {
+  // Apply saved theme
   const savedTheme = localStorage.getItem('selectedTheme');
   if (savedTheme) {
     const themeStylesheet = document.getElementById('themeStylesheet');
@@ -26,74 +56,162 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log(`Applied saved theme: ${savedTheme}`);
     }
   }
-});
 
-// Load header and footer via fetch
-document.addEventListener("DOMContentLoaded", function() {
-  // Load header.html
+  // Load header
   fetch('/components/header.html')
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('You have an error with header.html');
-      }
-      return response.text();
+    .then(res => {
+      if (!res.ok) throw new Error('Header load error');
+      return res.text();
     })
     .then(html => {
       document.getElementById('header-placeholder').innerHTML = html;
-      // Inizialize Bootstrap dropdown for element with dynamic loading:
-      var dropdownElements = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
-      dropdownElements.forEach(function(el) {
-        new bootstrap.Dropdown(el);
-      });
+
+      // After header is injected:
+      setTimeout(() => {
+        const dropdownElements = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+        dropdownElements.forEach(el => new bootstrap.Dropdown(el));
+
+        initializeSubmenuListeners();
+
+        const collapseEl = document.querySelector('#navbarSupportedContent');
+        if (collapseEl) {
+          new bootstrap.Collapse(collapseEl, { toggle: false });
+        }
+
+        // Restore scroll after toggling navbar
+        const navbarToggler = document.querySelector('.navbar-toggler');
+        const restoreScroll = () => {
+          document.body.style.overflow = 'auto';
+          document.documentElement.style.overflow = 'auto';
+          document.body.classList.remove('modal-open', 'offcanvas-open', 'overflow-hidden');
+        };
+
+        if (navbarToggler) {
+          navbarToggler.addEventListener('click', () => {
+            setTimeout(restoreScroll, 350);
+          });
+        }
+
+        window.addEventListener('resize', restoreScroll);
+        window.addEventListener('orientationchange', restoreScroll);
+      }, 0);
     })
-    .catch(error => console.error('Error:', error));
-  
-  // Load footer.html
+    .catch(err => console.error('Header error:', err));
+
+  // Load footer
   fetch('/components/footer.html')
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('You have an error with footer.html');
-      }
-      return response.text();
+    .then(res => {
+      if (!res.ok) throw new Error('Footer load error');
+      return res.text();
     })
     .then(html => {
       document.getElementById('footer-placeholder').innerHTML = html;
     })
-    .catch(error => console.error('Error:', error));
+    .catch(err => console.error('Footer error:', err));
+
+  // Load map metadata and enrich markers
+  fetch('/utilities/map.json')
+    .then(res => res.json())
+    .then(meta => {
+      const enrichedLocations = locations.map(loc => {
+        const metaEntry = meta.find(m => m.slug === loc.slug);
+        return {
+          ...loc,
+          wikipedia: metaEntry?.wikipedia || null,
+          articles: metaEntry?.articles || []
+        };
+      });
+
+      addMapMarkers(map, enrichedLocations);
+    })
+    .catch(err => console.error('Map load error:', err));
 });
 
-// Delegated event listeners for dropdown submenus 
-document.addEventListener('mouseover', function(event) {
-  const submenuElement = event.target.closest('.dropdown-submenu');
-  if (submenuElement) {
-    const submenuDropdown = submenuElement.querySelector('.submenu');
-    if (submenuDropdown) {
-      submenuDropdown.style.display = 'block';
+// ==============================
+// Add location markers to map
+// ==============================
+function addMapMarkers(map, locations) {
+  locations.forEach(loc => {
+    let popupContent = `
+      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+        <strong style="font-size: 14px;">${loc.name}</strong>
+        ${loc.wikipedia ? `
+          <a href="${loc.wikipedia}" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            background-color: transparent;
+            color: #333;
+            border: 1px solid #ccc;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 9px;
+            line-height: 1.1;
+            gap: 4px;
+            transition: all 0.2s ease-in-out;"
+            onmouseover="this.style.borderColor='#666'; this.style.color='#000'"
+            onmouseout="this.style.borderColor='#ccc'; this.style.color='#333'">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/8/80/Wikipedia-logo-v2.svg"
+              alt="Wikipedia" width="10" height="10" />
+            Read more
+          </a>` : ''}
+      </div><br>
+    `;
+
+    if (loc.articles.length > 0) {
+      popupContent += `<span><em>Appears in:</em></span><ul>`;
+      loc.articles.forEach(article => {
+        popupContent += `<li><a href="${article.url}" target="_blank">${article.title}</a></li>`;
+      });
+      popupContent += `</ul>`;
+    } else {
+      popupContent += `<em>We haven't any article about this place</em>`;
     }
+
+    L.marker(loc.coords).addTo(map).bindPopup(popupContent);
+  });
+}
+window.addMapMarkers = addMapMarkers;
+
+// ==============================
+// Submenu toggle 
+// ==============================
+function handleSubmenuClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const subMenu = this.nextElementSibling;
+
+  document.querySelectorAll('.dropdown-submenu .dropdown-menu.show').forEach(menu => {
+    if (menu !== subMenu) menu.classList.remove('show');
+  });
+
+  if (subMenu) {
+    subMenu.classList.toggle('show');
+  }
+}
+
+function initializeSubmenuListeners() {
+  document.querySelectorAll('.dropdown-submenu > a').forEach(el => {
+    el.removeEventListener('click', handleSubmenuClick);
+    el.addEventListener('click', handleSubmenuClick);
+  });
+}
+
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('.dropdown-menu')) {
+    document.querySelectorAll('.dropdown-submenu .dropdown-menu.show')
+      .forEach(menu => menu.classList.remove('show'));
   }
 });
 
-document.addEventListener('mouseout', function(event) {
-  const submenuElement = event.target.closest('.dropdown-submenu');
-  if (submenuElement) {
-    const submenuDropdown = submenuElement.querySelector('.submenu');
-    if (submenuDropdown) {
-      submenuDropdown.style.display = 'none';
-    }
-  }
-});
-
-// Delegated click event for design switching
-document.addEventListener('click', function(event) {
-  // Checking click for .dropdown-item
-  const target = event.target;
+// ==============================
+// Theme switch via dropdown
+// ==============================
+document.addEventListener('click', e => {
+  const target = e.target;
   if (target.matches('.dropdown-item') && target.hasAttribute('data-style')) {
-    event.preventDefault(); // Prevent href
-    const stylePath = target.getAttribute('data-style');
-    if (stylePath) {
-      switchStyle(stylePath);
-    }
+    e.preventDefault();
+    switchStyle(target.getAttribute('data-style'));
   }
 });
-
-
